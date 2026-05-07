@@ -16,6 +16,7 @@ function refreshAll() {
   displayStatsByCompetition();
   displayStatsByBookmaker();
   updateStakePercentDisplay();
+  renderBankrollChart();
 }
 
 function handleBankrollChange() {
@@ -90,6 +91,7 @@ function applyDateFilter() {
   displayStatsByCompetition();
   displayStatsByBookmaker();
   updateStakePercentDisplay();
+  renderBankrollChart();
 }
 
 function resetDateFilter() {
@@ -110,6 +112,7 @@ function resetDateFilter() {
   displayStatsByCompetition();
   displayStatsByBookmaker();
   updateStakePercentDisplay();
+  renderBankrollChart();
 }
 
 function getCurrentCompetitionName() {
@@ -277,6 +280,7 @@ function updateTicketStatus(index, newStatus) {
   displayStatsByCompetition();
   displayStatsByBookmaker();
   updateStakePercentDisplay();
+  renderBankrollChart();
 }
 
 function updateTicketCashout(index, value) {
@@ -291,6 +295,7 @@ function updateTicketCashout(index, value) {
   displayStatsByCompetition();
   displayStatsByBookmaker();
   updateStakePercentDisplay();
+  renderBankrollChart();
 }
 
 function updateSelectionStatus(ticketIndex, selectionIndex, newStatus) {
@@ -303,6 +308,7 @@ function updateSelectionStatus(ticketIndex, selectionIndex, newStatus) {
   displayDashboardStats();
   displayStatsByCompetition();
   displayStatsByBookmaker();
+  renderBankrollChart();
 }
 
 function saveTicket() {
@@ -429,6 +435,176 @@ function updateStats() {
   document.getElementById("profitTotal").textContent = money(settledProfit);
   document.getElementById("roiTotal").textContent = roi.toFixed(1).replace(".", ",") + " %";
 }
+
+function buildBankrollTimeline() {
+  const sortedTickets = [...tickets].sort((a, b) => {
+    const dateA = new Date(a.date || "1900-01-01");
+    const dateB = new Date(b.date || "1900-01-01");
+    return dateA - dateB;
+  });
+
+  let runningCapital = Number(capital) || 0;
+
+  const points = [
+    {
+      label: "Départ",
+      value: runningCapital
+    }
+  ];
+
+  sortedTickets.forEach((ticket, index) => {
+    if (ticket.status === "En attente") {
+      runningCapital -= Number(ticket.stake || 0);
+    } else {
+      runningCapital += calculateGain(ticket);
+    }
+
+    points.push({
+      label: ticket.date || "Ticket " + (index + 1),
+      value: runningCapital
+    });
+  });
+
+  return points;
+}
+
+function renderBankrollChart() {
+  const canvas = document.getElementById("bankrollChart");
+  const summary = document.getElementById("bankrollChartSummary");
+
+  if (!canvas) return;
+
+  const ctx = canvas.getContext("2d");
+  const parent = canvas.parentElement;
+  const width = parent.clientWidth - 20;
+  const height = 220;
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.width = width * dpr;
+  canvas.height = height * dpr;
+  canvas.style.width = width + "px";
+  canvas.style.height = height + "px";
+
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const points = buildBankrollTimeline();
+
+  if (points.length <= 1) {
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "14px Arial";
+    ctx.textAlign = "center";
+    ctx.fillText("Ajoute des tickets pour afficher l’évolution.", width / 2, height / 2);
+
+    if (summary) {
+      summary.innerHTML = "Aucune évolution disponible pour le moment.";
+    }
+
+    return;
+  }
+
+  const values = points.map(p => p.value);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const padding = 28;
+  const graphWidth = width - padding * 2;
+  const graphHeight = height - padding * 2;
+
+  const valueRange = maxValue - minValue || 1;
+
+  const getX = index => {
+    if (points.length === 1) return padding;
+    return padding + (index / (points.length - 1)) * graphWidth;
+  };
+
+  const getY = value => {
+    return padding + ((maxValue - value) / valueRange) * graphHeight;
+  };
+
+  ctx.strokeStyle = "rgba(148, 163, 184, 0.15)";
+  ctx.lineWidth = 1;
+
+  for (let i = 0; i <= 4; i++) {
+    const y = padding + (i / 4) * graphHeight;
+    ctx.beginPath();
+    ctx.moveTo(padding, y);
+    ctx.lineTo(width - padding, y);
+    ctx.stroke();
+  }
+
+  const startValue = values[0];
+  const endValue = values[values.length - 1];
+  const isPositive = endValue >= startValue;
+
+  const gradient = ctx.createLinearGradient(0, 0, width, 0);
+  gradient.addColorStop(0, "#1e88ff");
+  gradient.addColorStop(1, isPositive ? "#67e8f9" : "#fb7185");
+
+  ctx.beginPath();
+
+  points.forEach((point, index) => {
+    const x = getX(index);
+    const y = getY(point.value);
+
+    if (index === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      const prevX = getX(index - 1);
+      const prevY = getY(points[index - 1].value);
+      const midX = (prevX + x) / 2;
+
+      ctx.bezierCurveTo(midX, prevY, midX, y, x, y);
+    }
+  });
+
+  ctx.strokeStyle = gradient;
+  ctx.lineWidth = 4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.stroke();
+
+  ctx.lineTo(width - padding, height - padding);
+  ctx.lineTo(padding, height - padding);
+  ctx.closePath();
+
+  const fillGradient = ctx.createLinearGradient(0, padding, 0, height - padding);
+  fillGradient.addColorStop(0, isPositive ? "rgba(56, 189, 248, 0.22)" : "rgba(251, 113, 133, 0.18)");
+  fillGradient.addColorStop(1, "rgba(2, 6, 23, 0)");
+
+  ctx.fillStyle = fillGradient;
+  ctx.fill();
+
+  points.forEach((point, index) => {
+    const x = getX(index);
+    const y = getY(point.value);
+
+    ctx.beginPath();
+    ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = isPositive ? "#67e8f9" : "#fb7185";
+    ctx.fill();
+  });
+
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "11px Arial";
+  ctx.textAlign = "left";
+  ctx.fillText(money(maxValue), 6, padding + 4);
+  ctx.fillText(money(minValue), 6, height - padding + 4);
+
+  const evolution = endValue - startValue;
+  const evolutionClass = evolution > 0 ? "positive" : evolution < 0 ? "negative" : "neutral";
+
+  if (summary) {
+    summary.innerHTML = `
+      Départ : <strong>${money(startValue)}</strong><br>
+      Actuel : <strong>${money(endValue)}</strong><br>
+      Évolution : <strong class="${evolutionClass}">${money(evolution)}</strong>
+    `;
+  }
+}
+
+window.addEventListener("resize", () => {
+  renderBankrollChart();
+});
 
 document.getElementById("ticketDate").value = new Date().toISOString().slice(0, 10);
 
