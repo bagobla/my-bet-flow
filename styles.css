@@ -216,6 +216,28 @@ button:active {
   font-size: 18px;
 }
 
+.chart-box {
+  width: 100%;
+  background:
+    radial-gradient(circle at top right, rgba(56, 189, 248, 0.18), transparent 35%),
+    rgba(2, 6, 23, 0.88);
+  border-radius: 16px;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  padding: 10px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+#bankrollChart {
+  width: 100%;
+  display: block;
+}
+
+.chart-summary {
+  margin-top: 10px;
+  line-height: 1.45;
+}
+
 .positive {
   color: #4ade80;
 }
